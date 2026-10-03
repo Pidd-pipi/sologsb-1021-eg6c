@@ -6,6 +6,8 @@ import ReviewPanel from '~/components/ReviewPanel.vue';
 import DuplicateMergeDialog from '~/components/DuplicateMergeDialog.vue';
 import DeleteImpactDialog from '~/components/DeleteImpactDialog.vue';
 import VersionDrawer from '~/components/VersionDrawer.vue';
+import MergeCopyDialog from '~/components/MergeCopyDialog.vue';
+import ConflictDrawer from '~/components/ConflictDrawer.vue';
 import { useDictionaryStore } from '~/store/dictionary';
 import { referencesToEntry } from '~/utils/dictionary';
 import type { DictionaryEntry } from '~/types/dictionary';
@@ -14,10 +16,30 @@ const store = useDictionaryStore();
 const duplicateOpen = ref(false);
 const versionsOpen = ref(false);
 const deleteOpen = ref(false);
+const mergeOpen = ref(false);
+const conflictsOpen = ref(false);
 const deleteTarget = ref<DictionaryEntry | null>(null);
-const statusText = ref('本地数据已同步');
+const online = ref(true);
+const notice = ref('');
 
+const statusText = computed(() => {
+  if (notice.value) return notice.value;
+  return online.value ? '本地数据已同步' : '离线工作中，改动保存在浏览器';
+});
 const impacts = computed(() => deleteTarget.value ? referencesToEntry(store.entries, deleteTarget.value) : []);
+
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+const flash = (text: string, ms = 3200) => {
+  notice.value = text;
+  window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => { notice.value = ''; }, ms);
+};
+
+const updateOnline = () => {
+  const nowOnline = navigator.onLine;
+  if (nowOnline && !online.value) flash('已重新连接，可以合并同事副本');
+  online.value = nowOnline;
+};
 
 const openDelete = () => {
   deleteTarget.value = store.selectedEntry ?? null;
@@ -29,14 +51,12 @@ const confirmDelete = () => {
   const name = deleteTarget.value.headword;
   store.deleteEntry(deleteTarget.value.id);
   deleteOpen.value = false;
-  statusText.value = `已删除“${name}”，可在版本记录中恢复`;
-  window.setTimeout(() => { statusText.value = '本地数据已同步'; }, 3200);
+  flash(`已删除“${name}”，可在版本记录中恢复`);
 };
 
 const openDuplicates = () => {
   if (!store.duplicates.length) {
-    statusText.value = '当前没有检测到高度相似的重复词条';
-    window.setTimeout(() => { statusText.value = '本地数据已同步'; }, 2600);
+    flash('当前没有检测到高度相似的重复词条', 2600);
     return;
   }
   duplicateOpen.value = true;
@@ -78,22 +98,47 @@ const keyboard = (event: KeyboardEvent) => {
   if (event.key.toLowerCase() === 'v') { event.preventDefault(); versionsOpen.value = true; }
 };
 
-onMounted(() => window.addEventListener('keydown', keyboard));
-onBeforeUnmount(() => window.removeEventListener('keydown', keyboard));
+onMounted(() => {
+  online.value = navigator.onLine;
+  window.addEventListener('keydown', keyboard);
+  window.addEventListener('online', updateOnline);
+  window.addEventListener('offline', updateOnline);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', keyboard);
+  window.removeEventListener('online', updateOnline);
+  window.removeEventListener('offline', updateOnline);
+  window.clearTimeout(noticeTimer);
+});
 </script>
 
 <template>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand"><div class="brand-seal">语</div><div><h1>濒危语言词典编辑与审校</h1><p>ENDANGERED LANGUAGE LEXICON WORKBENCH</p></div></div>
-      <div class="offline-status"><span class="online-dot" />{{ statusText }}</div>
+      <div class="offline-status"><span class="online-dot" :class="{ offline: !online }" />{{ statusText }}</div>
       <div class="top-actions">
         <t-button variant="text" theme="default" :disabled="!store.canUndo" @click="store.undo">撤销</t-button>
         <t-button variant="text" theme="default" :disabled="!store.canRedo" @click="store.redo">重做</t-button>
+        <t-badge v-if="store.conflicts.length" :count="store.conflicts.length" :offset="[4, -2]">
+          <t-button variant="outline" theme="warning" @click="conflictsOpen = true">合并冲突</t-button>
+        </t-badge>
+        <t-button variant="outline" theme="default" @click="mergeOpen = true">合并副本</t-button>
         <t-button variant="outline" theme="default" @click="exportData">导出备份</t-button>
         <t-button theme="primary" @click="store.createEntry">＋ 新建词条</t-button>
       </div>
     </header>
+
+    <div v-if="store.mergeFailure" class="merge-failure">
+      <div>
+        <strong>上次合并「{{ store.mergeFailure.sourceName }}」失败：{{ store.mergeFailure.error }}</strong>
+        <span>失败位置：{{ store.mergeFailure.position }} · 本地改动已完整保留，可恢复后再次合并</span>
+      </div>
+      <div class="failure-actions">
+        <t-button size="small" theme="primary" @click="store.retryMerge() || (mergeOpen = true)">重试合并</t-button>
+        <t-button size="small" variant="outline" @click="store.discardMergeFailure()">放弃并清除</t-button>
+      </div>
+    </div>
 
     <section class="project-bar">
       <div><span class="eyebrow">COMMUNITY DICTIONARY · 离线工作区</span><h2>词汇整理与审校</h2><p>从田野记录到确认词条，逐字段保留修改依据、审校回复和版本历史。</p></div>
@@ -128,6 +173,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', keyboard));
       <DuplicateMergeDialog v-model="duplicateOpen" :pairs="store.duplicates" />
       <DeleteImpactDialog v-model="deleteOpen" :entry="deleteTarget" :impacts="impacts" @confirm="confirmDelete" />
       <VersionDrawer v-model="versionsOpen" />
+      <MergeCopyDialog v-model="mergeOpen" />
+      <ConflictDrawer v-model="conflictsOpen" />
     </ClientOnly>
   </div>
 </template>

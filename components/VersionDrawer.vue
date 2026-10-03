@@ -32,6 +32,16 @@ const diff = (before: typeof store.entries) => {
         </article>
         <t-empty v-if="!revisions.length" description="编辑词条后，版本记录会出现在这里" />
       </div>
+      <div v-if="store.mergeReports.length" class="audit-section">
+        <h3>副本合并记录</h3>
+        <div v-for="item in store.mergeReports" :key="item.id" class="audit-line">
+          <time>{{ new Date(item.at).toLocaleString('zh-CN') }}</time>
+          <div>
+            <strong>合并自「{{ item.sourceName }}」</strong>
+            <span>新增 {{ item.added }} 条 · 对照 {{ item.merged }} 条 · {{ item.conflicts }} 处冲突 · {{ item.protectedNotes.length }} 条保护性保留</span>
+          </div>
+        </div>
+      </div>
       <div class="audit-section">
         <h3>最近操作</h3>
         <div v-for="item in store.audit.slice(0, 12)" :key="item.id" class="audit-line"><time>{{ new Date(item.at).toLocaleString('zh-CN') }}</time><div><strong>{{ item.action }}</strong><span>{{ item.detail }}</span></div></div>

@@ -27,6 +27,45 @@ button, input, textarea { font: inherit; }
 .brand p { margin: 3px 0 0; color: rgba(255,255,255,.48); font-size: 8px; letter-spacing: .18em; }
 .offline-status { justify-self: center; gap: 7px; color: rgba(255,255,255,.75); font-size: 11px; }
 .online-dot { width: 7px; height: 7px; border-radius: 50%; background: #75d7a4; box-shadow: 0 0 0 4px rgba(117,215,164,.12); }
+.online-dot.offline { background: #d7a157; box-shadow: 0 0 0 4px rgba(215,161,87,.14); }
+.merge-failure { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 12px 24px 0; padding: 11px 14px; border: 1px solid #e4c3bd; border-left: 4px solid var(--danger); border-radius: 9px; background: #fbf1ee; }
+.merge-failure strong { display: block; color: #8c3a2f; font-size: 11px; }
+.merge-failure span { display: block; margin-top: 3px; color: #96655c; font-size: 9px; }
+.failure-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+.copy-merge { padding-bottom: 4px; }
+.merge-hint { margin: 0 0 12px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.merge-form { display: flex; flex-direction: column; gap: 10px; }
+.merge-form .field-block { margin-top: 0; }
+.file-picker { display: block; padding: 10px 12px; border: 1px dashed #b9c8c1; border-radius: 8px; color: var(--forest); background: #f4f8f5; font-size: 10px; cursor: pointer; }
+.file-picker input { display: none; }
+.failure-detail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.failure-detail div { padding: 9px; border-radius: 7px; background: #f6f1ee; }
+.failure-detail strong { display: block; color: #8c5a50; font-size: 8px; }
+.failure-detail span { display: block; margin-top: 4px; font-size: 10px; word-break: break-all; }
+.report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 13px 0; }
+.report-grid div { padding: 10px; text-align: center; border-radius: 8px; background: #eef4f1; }
+.report-grid strong { display: block; font-family: "Songti SC", serif; font-size: 21px; color: var(--forest); }
+.report-grid span { color: var(--muted); font-size: 8px; }
+.report-notes { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: #f5f8f5; }
+.report-notes h4 { margin: 0 0 6px; color: var(--forest); font-size: 10px; }
+.report-notes p { margin: 4px 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.conflict-drawer { padding: 2px 2px 20px; }
+.conflict-intro { padding: 12px; border-radius: 9px; background: #fdf6ec; }
+.conflict-intro > strong { font-family: "Songti SC", serif; font-size: 26px; color: var(--ochre); }
+.conflict-intro > span { margin-left: 5px; font-size: 10px; }
+.conflict-intro p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.batch-actions { display: flex; gap: 7px; margin-top: 9px; }
+.conflict-group h3 { margin: 16px 0 4px; font-family: "Songti SC", serif; font-size: 16px; }
+.conflict-card { margin: 8px 0; padding: 11px 12px; border: 1px solid #e3d9c8; border-radius: 9px; background: #fffdf8; }
+.conflict-card > header { display: flex; align-items: center; gap: 8px; color: #8a7a5f; font-size: 8px; }
+.conflict-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+.conflict-side { display: flex; flex-direction: column; gap: 7px; padding: 9px; border: 1px solid #e2e8e4; border-radius: 8px; background: #f7faf8; }
+.conflict-side.remote { border-color: #e4d6bd; background: #fbf7ee; }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.side-head strong { font-size: 9px; }
+.side-head time { color: #98a39e; font-size: 7px; }
+.conflict-side pre { flex: 1; margin: 0; padding: 7px; overflow: auto; max-height: 150px; border-radius: 6px; background: rgba(255,255,255,.75); font-size: 9px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.conflict-side .t-button { align-self: flex-end; }
 .top-actions { justify-content: flex-end; gap: 6px; }
 .topbar .t-button--variant-text { color: white; }
 .topbar .t-button--variant-outline { color: white; border-color: rgba(255,255,255,.32); }

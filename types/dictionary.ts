@@ -49,6 +49,50 @@ export interface DictionaryEntry {
   reviewerComments: ReviewComment[];
 }
 
+export interface Tombstone {
+  id: string;
+  headword: string;
+  deletedAt: string;
+}
+
+export interface FieldConflict {
+  id: string;
+  kind: 'field' | 'restore';
+  entryId: string;
+  entryHeadword: string;
+  field: string;
+  fieldLabel: string;
+  itemId?: string;
+  localRaw: unknown;
+  remoteRaw: unknown;
+  localText: string;
+  remoteText: string;
+  localAt: string;
+  remoteAt: string;
+  sourceName: string;
+  mergedAt: string;
+  remoteEntry?: DictionaryEntry;
+}
+
+export interface MergeReport {
+  id: string;
+  at: string;
+  sourceName: string;
+  added: number;
+  merged: number;
+  conflicts: number;
+  protectedNotes: string[];
+  withdrawnNotes: string[];
+}
+
+export interface MergeFailure {
+  at: string;
+  sourceName: string;
+  error: string;
+  position: string;
+  payload: string;
+}
+
 export interface VersionRecord {
   id: string;
   at: string;
@@ -71,6 +115,9 @@ export interface DictionarySnapshot {
   entries: DictionaryEntry[];
   versions: VersionRecord[];
   audit: AuditRecord[];
+  tombstones?: Tombstone[];
+  conflicts?: FieldConflict[];
+  mergeReports?: MergeReport[];
 }
 
 export interface DuplicatePair {

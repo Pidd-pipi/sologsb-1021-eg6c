@@ -1,13 +1,16 @@
 import { computed, reactive, ref } from 'vue';
 import { defineStore } from 'pinia';
 import type {
-  AuditRecord, DictionaryEntry, DictionarySnapshot, DuplicatePair, EntryStatus, ReviewComment, VersionRecord
+  AuditRecord, DictionaryEntry, DictionarySnapshot, DuplicatePair, EntryStatus,
+  FieldConflict, MergeFailure, MergeReport, ReviewComment, Tombstone, VersionRecord
 } from '~/types/dictionary';
 import { findDuplicates } from '~/utils/dictionary';
+import { MergeError, mergeSnapshot, parsePackage } from '~/utils/merge';
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const FAILURE_KEY = 'sologsb-1021-merge-failure';
 
 const seedEntries = (): DictionaryEntry[] => [
   {
@@ -58,6 +61,10 @@ export const useDictionaryStore = defineStore('dictionary', () => {
   const entries = reactive<DictionaryEntry[]>(seedEntries());
   const versions = reactive<VersionRecord[]>([]);
   const audit = reactive<AuditRecord[]>(seedAudit);
+  const tombstones = reactive<Tombstone[]>([]);
+  const conflicts = reactive<FieldConflict[]>([]);
+  const mergeReports = reactive<MergeReport[]>([]);
+  const mergeFailure = ref<MergeFailure | null>(null);
   const selectedId = ref(entries[0]?.id ?? '');
   const hydrated = ref(false);
   const undoStack = ref<DictionarySnapshot[]>([]);
@@ -72,7 +79,10 @@ export const useDictionaryStore = defineStore('dictionary', () => {
     revision: revision.value,
     entries: clone(entries),
     versions: clone(versions),
-    audit: clone(audit)
+    audit: clone(audit),
+    tombstones: clone(tombstones),
+    conflicts: clone(conflicts),
+    mergeReports: clone(mergeReports)
   }));
   const duplicates = computed<DuplicatePair[]>(() => findDuplicates(entries));
   const openComments = computed(() => entries.reduce((sum, entry) => sum + entry.reviewerComments.filter((comment) => comment.status === 'open').length, 0));
@@ -93,7 +103,10 @@ export const useDictionaryStore = defineStore('dictionary', () => {
       revision: revision.value,
       entries: clone(entries),
       versions: clone(versions),
-      audit: clone(audit)
+      audit: clone(audit),
+      tombstones: clone(tombstones),
+      conflicts: clone(conflicts),
+      mergeReports: clone(mergeReports)
     };
   }
 
@@ -102,6 +115,9 @@ export const useDictionaryStore = defineStore('dictionary', () => {
     entries.splice(0, entries.length, ...(clone(value.entries ?? [])));
     versions.splice(0, versions.length, ...(clone(value.versions ?? [])));
     audit.splice(0, audit.length, ...(clone(value.audit ?? [])));
+    tombstones.splice(0, tombstones.length, ...(clone(value.tombstones ?? [])));
+    conflicts.splice(0, conflicts.length, ...(clone(value.conflicts ?? [])));
+    mergeReports.splice(0, mergeReports.length, ...(clone(value.mergeReports ?? [])));
     if (!entries.some((entry) => entry.id === selectedId.value)) selectedId.value = entries[0]?.id ?? '';
   }
 
@@ -241,6 +257,7 @@ export const useDictionaryStore = defineStore('dictionary', () => {
     commit('删除词条', `删除“${entry.headword}”`, [entryId], () => {
       const index = entries.findIndex((item) => item.id === entryId);
       if (index >= 0) entries.splice(index, 1);
+      tombstones.push({ id: entry.id, headword: entry.headword, deletedAt: now() });
       selectedId.value = entries[0]?.id ?? '';
     });
   }
@@ -266,7 +283,10 @@ export const useDictionaryStore = defineStore('dictionary', () => {
       target.status = 'disputed';
       sourceIds.forEach((id) => {
         const index = entries.findIndex((entry) => entry.id === id);
-        if (index >= 0) entries.splice(index, 1);
+        if (index >= 0) {
+          tombstones.push({ id, headword: entries[index]!.headword, deletedAt: now() });
+          entries.splice(index, 1);
+        }
       });
     });
   }
@@ -295,12 +315,110 @@ export const useDictionaryStore = defineStore('dictionary', () => {
     });
   }
 
+  function persistFailure() {
+    try {
+      if (mergeFailure.value) localStorage.setItem(FAILURE_KEY, JSON.stringify(mergeFailure.value));
+      else localStorage.removeItem(FAILURE_KEY);
+    } catch { /* 本地存储不可用时仅保留内存中的失败记录 */ }
+  }
+
+  function importAndMerge(payload: string, sourceName: string): MergeReport | null {
+    const name = sourceName.trim() || '未命名副本';
+    try {
+      const remote = parsePackage(payload);
+      const outcome = mergeSnapshot({ entries: clone(entries), tombstones: clone(tombstones) }, remote, name);
+      commit(
+        '合并副本',
+        `合并来自「${name}」的副本：新增 ${outcome.report.added} 条，对照 ${outcome.report.merged} 条共同词条，产生 ${outcome.report.conflicts} 处字段冲突待选择`,
+        [],
+        () => {
+          entries.splice(0, entries.length, ...outcome.entries);
+          tombstones.splice(0, tombstones.length, ...outcome.tombstones);
+          conflicts.unshift(...outcome.conflicts);
+          mergeReports.unshift(outcome.report);
+          mergeReports.splice(30);
+        }
+      );
+      mergeFailure.value = null;
+      persistFailure();
+      return outcome.report;
+    } catch (error) {
+      const failure: MergeFailure = {
+        at: now(),
+        sourceName: name,
+        error: error instanceof Error ? error.message : String(error),
+        position: error instanceof MergeError ? error.position : '合并引擎',
+        payload
+      };
+      mergeFailure.value = failure;
+      persistFailure();
+      return null;
+    }
+  }
+
+  function retryMerge() {
+    if (!mergeFailure.value) return null;
+    return importAndMerge(mergeFailure.value.payload, mergeFailure.value.sourceName);
+  }
+
+  function discardMergeFailure() {
+    mergeFailure.value = null;
+    persistFailure();
+  }
+
+  function applyConflictChoice(conflict: FieldConflict, choice: 'local' | 'remote') {
+    if (conflict.kind === 'restore') {
+      if (choice === 'remote' && conflict.remoteEntry) {
+        entries.unshift(clone(conflict.remoteEntry));
+        const stoneIndex = tombstones.findIndex((stone) => stone.id === conflict.entryId);
+        if (stoneIndex >= 0) tombstones.splice(stoneIndex, 1);
+      }
+      return;
+    }
+    const entry = entries.find((item) => item.id === conflict.entryId);
+    if (!entry) return;
+    const value = clone(choice === 'local' ? conflict.localRaw : conflict.remoteRaw);
+    if (conflict.itemId) {
+      const list = entry[conflict.field as 'dialectVariants' | 'examples' | 'sources'] as Array<{ id: string }>;
+      const index = list.findIndex((item) => item.id === conflict.itemId);
+      if (index >= 0) list.splice(index, 1, value as never);
+    } else {
+      (entry as unknown as Record<string, unknown>)[conflict.field] = value;
+    }
+  }
+
+  function resolveConflict(conflictId: string, choice: 'local' | 'remote') {
+    const conflict = conflicts.find((item) => item.id === conflictId);
+    if (!conflict) return;
+    const side = choice === 'local' ? '本地版本' : `副本「${conflict.sourceName}」版本`;
+    commit('解决合并冲突', `“${conflict.entryHeadword}”的${conflict.fieldLabel}采用${side}`, [conflict.entryId], () => {
+      applyConflictChoice(conflict, choice);
+      const index = conflicts.findIndex((item) => item.id === conflictId);
+      if (index >= 0) conflicts.splice(index, 1);
+    });
+  }
+
+  function resolveAllConflicts(choice: 'local' | 'remote') {
+    if (!conflicts.length) return;
+    const side = choice === 'local' ? '本地版本' : '对方副本版本';
+    commit('批量解决合并冲突', `全部 ${conflicts.length} 处冲突采用${side}`, [...new Set(conflicts.map((item) => item.entryId))], () => {
+      [...conflicts].forEach((conflict) => applyConflictChoice(conflict, choice));
+      conflicts.splice(0, conflicts.length);
+    });
+  }
+
   function hydrateFromBrowser() {
     try {
       const raw = localStorage.getItem('sologsb-1021-dictionary-v1');
       if (raw) restore(JSON.parse(raw) as DictionarySnapshot);
     } catch {
       localStorage.removeItem('sologsb-1021-dictionary-v1');
+    }
+    try {
+      const failure = localStorage.getItem(FAILURE_KEY);
+      if (failure) mergeFailure.value = JSON.parse(failure) as MergeFailure;
+    } catch {
+      localStorage.removeItem(FAILURE_KEY);
     } finally {
       hydrated.value = true;
     }
@@ -311,11 +429,13 @@ export const useDictionaryStore = defineStore('dictionary', () => {
   }
 
   return {
-    revision, entries, versions, audit, selectedId, hydrated, query, statusFilter, dialectFilter, fieldReplyDrafts,
+    revision, entries, versions, audit, tombstones, conflicts, mergeReports, mergeFailure,
+    selectedId, hydrated, query, statusFilter, dialectFilter, fieldReplyDrafts,
     selectedEntry, filteredEntries, dialects, duplicates, openComments, persistableSnapshot,
     canUndo: computed(() => undoStack.value.length > 0), canRedo: computed(() => redoStack.value.length > 0),
     createEntry, updateField, setStatus, addVariant, updateVariant, removeVariant, addExample, updateExample, removeExample,
     addSource, updateSource, removeSource, setSynonyms, addComment, replyComment, toggleComment, deleteEntry, mergeEntries,
-    undo, redo, restoreVersion, hydrateFromBrowser, exportPackage
+    undo, redo, restoreVersion, importAndMerge, retryMerge, discardMergeFailure, resolveConflict, resolveAllConflicts,
+    hydrateFromBrowser, exportPackage
   };
 });
