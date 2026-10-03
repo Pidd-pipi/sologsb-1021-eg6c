@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useDictionaryStore } from '~/store/dictionary';
+import { FIELD_LABELS, formatRev, type ScalarField } from '~/utils/sync';
 
 const store = useDictionaryStore();
 const activeTab = ref('basic');
@@ -12,6 +13,11 @@ const eventValue = (event: any) => typeof event === 'string' || typeof event ===
 const commitInput = (event: any, field: 'headword' | 'pronunciation' | 'partOfSpeech' | 'definition' | 'notes') => {
   if (!entry.value) return;
   store.updateField(entry.value.id, field, eventValue(event), field);
+};
+
+const provenance = (field: ScalarField) => {
+  const rev = entry.value?.fieldRevisions[field];
+  return rev ? `${FIELD_LABELS[field]}最后修改：${formatRev(rev)}` : '';
 };
 </script>
 
@@ -37,13 +43,13 @@ const commitInput = (event: any, field: 'headword' | 'pronunciation' | 'partOfSp
             <label class="field-block"><span>发音说明</span><t-input :default-value="entry.pronunciation" @blur="commitInput($event, 'pronunciation')" placeholder="声调、重音或发音人说明" /></label>
           </div>
           <div class="field-grid two compact-grid">
-            <label class="field-block"><span>词性</span><t-select :model-value="entry.partOfSpeech" @change="(value) => store.updateField(entry.id, 'partOfSpeech', String(value || ''))" clearable>
+            <label class="field-block"><span>词性</span><t-select :model-value="entry.partOfSpeech" @change="(value: unknown) => store.updateField(entry.id, 'partOfSpeech', String(value || ''))" clearable>
               <t-option value="名词" label="名词" /><t-option value="动词" label="动词" /><t-option value="形容词" label="形容词" /><t-option value="副词" label="副词" /><t-option value="方向词" label="方向词" /><t-option value="量词" label="量词" /><t-option value="短语" label="短语" />
             </t-select></label>
-            <label class="field-block"><span>同义词（用顿号分隔）</span><t-input :default-value="synonymsText" @blur="store.setSynonyms(entry.id, eventValue($event).split(/[、,，]/).map((item) => item.trim()).filter(Boolean))" placeholder="水潭、泉眼" /></label>
+            <label class="field-block"><span>同义词（用顿号分隔）</span><t-input :default-value="synonymsText" @blur="store.setSynonyms(entry.id, eventValue($event).split(/[、,，]/).map((item: string) => item.trim()).filter(Boolean))" placeholder="水潭、泉眼" /><small class="field-provenance">{{ provenance('synonyms') }}</small></label>
           </div>
-          <label class="field-block"><span>释义</span><t-textarea :default-value="entry.definition" :autosize="{ minRows: 3, maxRows: 7 }" @blur="commitInput($event, 'definition')" placeholder="用简洁语言描述词义、语用限制和引申关系" /></label>
-          <label class="field-block"><span>编者备注</span><t-textarea :default-value="entry.notes" :autosize="{ minRows: 2, maxRows: 5 }" @blur="commitInput($event, 'notes')" placeholder="记录不确定项、调查问题或整理说明" /></label>
+          <label class="field-block"><span>释义</span><t-textarea :default-value="entry.definition" :autosize="{ minRows: 3, maxRows: 7 }" @blur="commitInput($event, 'definition')" placeholder="用简洁语言描述词义、语用限制和引申关系" /><small class="field-provenance">{{ provenance('definition') }}</small></label>
+          <label class="field-block"><span>编者备注</span><t-textarea :default-value="entry.notes" :autosize="{ minRows: 2, maxRows: 5 }" @blur="commitInput($event, 'notes')" placeholder="记录不确定项、调查问题或整理说明" /><small class="field-provenance">{{ provenance('notes') }}</small></label>
         </div>
       </t-tab-panel>
 
@@ -57,7 +63,9 @@ const commitInput = (event: any, field: 'headword' | 'pronunciation' | 'partOfSp
               <label class="field-block"><span>词形</span><t-input :default-value="variant.form" @blur="store.updateVariant(entry.id, variant.id, 'form', eventValue($event))" /></label>
               <label class="field-block"><span>读音</span><t-input :default-value="variant.pronunciation" @blur="store.updateVariant(entry.id, variant.id, 'pronunciation', eventValue($event))" /></label>
             </div>
-            <label class="field-block"><span>使用说明</span><t-input :default-value="variant.note" @blur="store.updateVariant(entry.id, variant.id, 'note', eventValue($event))" /></label>
+            <label class="field-block"><span>使用说明</span><t-input :default-value="variant.note" @blur="store.updateVariant(entry.id, variant.id, 'note', eventValue($event))" />
+              <small v-if="variant.origin" class="origin-badge">来自副本：{{ variant.origin }}</small>
+            </label>
           </div>
           <t-empty v-if="!entry.dialectVariants.length" description="暂未记录方言变体" />
         </div>
@@ -71,6 +79,7 @@ const commitInput = (event: any, field: 'headword' | 'pronunciation' | 'partOfSp
             <span class="card-index">EX {{ String(index + 1).padStart(2, '0') }}</span>
             <label class="field-block"><span>原文</span><t-textarea :default-value="example.text" :autosize="{ minRows: 2, maxRows: 4 }" @blur="store.updateExample(entry.id, example.id, 'text', eventValue($event))" /></label>
             <div class="field-grid two"><label class="field-block"><span>译文</span><t-input :default-value="example.translation" @blur="store.updateExample(entry.id, example.id, 'translation', eventValue($event))" /></label><label class="field-block"><span>出处</span><t-input :default-value="example.source" @blur="store.updateExample(entry.id, example.id, 'source', eventValue($event))" /></label></div>
+            <small v-if="example.origin" class="origin-badge">来自副本：{{ example.origin }}</small>
           </div>
           <t-empty v-if="!entry.examples.length" description="暂未记录例句" />
         </div>
@@ -83,6 +92,7 @@ const commitInput = (event: any, field: 'headword' | 'pronunciation' | 'partOfSp
             <button class="remove-button" @click="store.removeSource(entry.id, source.id)">×</button>
             <div class="field-grid two"><label class="field-block"><span>来源名称</span><t-input :default-value="source.title" @blur="store.updateSource(entry.id, source.id, 'title', eventValue($event))" /></label><label class="field-block"><span>链接（可选）</span><t-input :default-value="source.url" @blur="store.updateSource(entry.id, source.id, 'url', eventValue($event))" /></label></div>
             <label class="field-block"><span>引用信息</span><t-input :default-value="source.citation" @blur="store.updateSource(entry.id, source.id, 'citation', eventValue($event))" /></label>
+            <small v-if="source.origin" class="origin-badge">来自副本：{{ source.origin }}</small>
           </div>
           <t-empty v-if="!entry.sources.length" description="暂未记录来源" />
         </div>

@@ -7,7 +7,10 @@
     "dev": "nuxt dev",
     "build": "nuxt generate",
     "generate": "nuxt generate",
-    "preview": "npx serve .output/public"
+    "preview": "npx serve .output/public",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test:merge": "node --import jiti/register scripts/test-merge.mts",
+    "test:store": "node scripts/test-store.mjs"
   },
   "dependencies": {
     "@pinia/nuxt": "^1.0.2",
@@ -18,6 +21,8 @@
   },
   "devDependencies": {
     "@tdesign-vue-next/nuxt": "^0.2.2",
-    "typescript": "^5.9.2"
+    "jiti": "^2.7.0",
+    "typescript": "^5.9.2",
+    "vue-tsc": "^3.3.12"
   }
 }
